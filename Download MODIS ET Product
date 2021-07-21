@@ -1,0 +1,97 @@
+######################################
+
+Script to download and subset MODIS ET Data via the MODIStsp package  
+
+######################################
+
+
+
+
+
+install.packages("MODIStsp")
+install.packages(c("leaflet", "shiny","shinydashboard","shinyFiles",
+                   "shinyalert", "rappdirs","shinyjs",
+                   "leafem", "mapedit", "magrittr"))
+#install.packages("mapedit")
+
+
+
+library(raster)
+library(rgdal)
+library(gdalUtils)
+library(maptools)
+library(sp)
+library(mapview)
+library(MODIStsp)
+
+
+
+## the next Command brings you to the modis data platform. We can select, pre-sort, and dowload the ET data with different settings
+## a plus: the downloaded data is already stacked and transformed to a .RData file
+MODIStsp()
+
+##load the .RData file with the stack (rename it)
+load("*your path to the directory*/Terra/ET_500m/MOD16A2GF_ET_500m_65_2000_273_2019_RData.RData")
+raster_long_ET <- raster_ts # renaming it
+
+## loading the last few layers as stack
+load("C:/Users/Johnny Basar/Desktop/ET/Net_ETgf_8Day_500m_v6/Time_Series/RData/Terra/ET_500m/MOD16A2GF_ET_500m_281_2019_361_2019_RData.RData") 
+
+## merging the two stacks to one stack (dropping all data of 2000)
+ET_ALL <- stack(raster_long_ET[[39:nlayers(raster_long_ET)]], raster_ts)
+names(ET_ALL)
+
+
+## load (as reference data) the NDVI 
+current_ndvi_brick <- stack("~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/Dürre/Notwendige_Daten/current_ndvi_brick_khorezm.tif")
+
+## load used grid for resampling
+grid_resam <- raster("~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/Erstellte_Daten/grid_Raster.tif")
+
+
+## check the Data
+plot(ET_ALL[[2]])
+crs(ET_ALL)
+
+# compare the CRS of the to stacks
+compare_CRS(crs(ET_ALL), crs(current_ndvi_brick))
+
+## check the extent
+extent(ET_ALL)
+extent(current_ndvi_brick)
+compareRaster(ET_ALL, current_ndvi_brick)
+
+
+## crop the ET stack to the extent of the ndvi stack (first time it just give almost the same extent <- different spatial resolution)
+ET_ALL_CROP_ONE <- raster::crop(ET_ALL, extent(current_ndvi_brick))
+
+## save and reload new stack. otherwise it will not be safed in the environment (for some reason)
+#writeRaster(ET_ALL_CROP_ONE, "C:/Users/Johnny Basar/Documents/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_ALL_CROP_ONE.tif")
+#ET_ALL_CROP_ONE <- stack("C:/Users/Johnny Basar/Documents/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_ALL_CROP_ONE.tif")
+
+
+
+
+
+## resample the ET Data to 5x5 km 
+ET_ALL_RES <- raster::resample(ET_ALL_CROP_ONE, grid_resam)
+
+
+## crop again for same extent as NDVI Data
+# just now we have the same extent AND the same cell size
+ET_ALL_CROP_TWO <- raster::crop(ET_ALL_RES, grid_resam)
+
+
+
+## Mask the data 
+ET_DATA <- mask(ET_ALL_CROP_TWO, current_ndvi_brick[[1]], maskvalue = NA, updatevalue = NA) ## the mask command resets the those Pixels who turn into zero. If there is no drought detected in a pixel of the 4th timestep we use that to reset the same pixel of the summed-up-Layer from timestep 3 to Zero. All other pixels keep there summed up vlaues.
+#writeRaster(ET_DATA, "~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_DATA.tif", format = "GTiff", options="INTERLEAVE=BAND", overwrite = TRUE)
+writeRaster(ET_DATA, "~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_DATA_Raster.grd", format = "raster", options="INTERLEAVE=BAND", overwrite=TRUE)
+
+raster_ET <- stack("~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_DATA_Raster.grd")
+#raster_ET_tiff <- stack("~/Meine Dokumente/6_Studium_Halle/01_Module/09_globale_Umweltsyndrome/01_Projekt/02_Daten/Daten/ET_Data/ET_DATA.tif")
+################################################
+
+#raster::click(current_ndvi_brick[[1]])
+
+
